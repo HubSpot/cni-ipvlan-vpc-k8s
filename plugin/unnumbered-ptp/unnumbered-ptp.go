@@ -212,7 +212,7 @@ func addPolicyRules(veth *net.Interface, ipc *current.IPConfig, routes []*types.
 	// add policy route for traffic originating from a Pod
 	rule := netlink.NewRule()
 	rule.Priority = 100
-	rule.Src = ipc.Address.IP
+	rule.Src = &net.IPNet{IP: ipc.Address.IP, Mask: net.CIDRMask(32, 32)}
 	rule.Table = table
 	err := netlink.RuleAdd(rule)
 	if err != nil {
