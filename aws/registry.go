@@ -137,6 +137,7 @@ func (r *Registry) save(rc *registryContents) error {
 	if encoder == nil {
 		return fmt.Errorf("could not make a new encoder")
 	}
+	encoder.SetIndent("", "  ")
 	rc.SchemaVersion = registrySchemaVersion
 	err = encoder.Encode(rc)
 	return err
