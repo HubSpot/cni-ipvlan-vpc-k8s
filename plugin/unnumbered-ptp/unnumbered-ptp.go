@@ -499,13 +499,17 @@ func cmdDel(args *skel.CmdArgs) error {
 	if conf.IPMasq {
 		chain := utils.FormatChainName(conf.Name, args.ContainerID)
 		comment := utils.FormatComment(conf.Name, args.ContainerID)
+		src_rule := netlink.NewRule()
 		for _, ipn := range ipnets {
 			addrBits := 128
 			if ipn.IP.To4() != nil {
 				addrBits = 32
 			}
 
-			_ = ip.TeardownIPMasq(&net.IPNet{IP: ipn.IP, Mask: net.CIDRMask(addrBits, addrBits)}, chain, comment)
+      exact_ipn := net.IPNet{IP: ipn.IP, Mask: net.CIDRMask(addrBits, addrBits)}
+			_ = ip.TeardownIPMasq(&exact_ipn, chain, comment)
+			src_rule.Src = &exact_ipn
+			_ = netlink.RuleDel(src_rule)
 		}
 
 		if vethPeerIndex != -1 {
