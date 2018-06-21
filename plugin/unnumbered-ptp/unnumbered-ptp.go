@@ -67,11 +67,13 @@ type PluginConf struct {
 	RawPrevResult *map[string]interface{} `json:"prevResult"`
 	PrevResult    *current.Result         `json:"-"`
 
-	IPMasq             bool   `json:"ipMasq"`
-	HostInterface      string `json:"hostInterface"`
-	ContainerInterface string `json:"containerInterface"`
-	MTU                int    `json:"mtu"`
-	TableStart         int    `json:"routeTableStart"`
+	IPMasq                 bool   `json:"ipMasq"`
+	HostInterface          string `json:"hostInterface"`
+	ContainerInterface     string `json:"containerInterface"`
+	MTU                    int    `json:"mtu"`
+	TableStart             int    `json:"routeTableStart"`
+	HostPolicyRulePriority int    `json:"hostPolicyRulePriority"`
+	HostPolicyRulesByIp    bool   `json:"hostPolicyRulesByIp"`
 }
 
 // parseConfig parses the supplied configuration (and prevResult) from stdin.
@@ -164,7 +166,7 @@ func findFreeTable(start int) (int, error) {
 	return -1, fmt.Errorf("failed to find free route table")
 }
 
-func addPolicyRules(veth *net.Interface, ipc *current.IPConfig, routes []*types.Route, tableStart int) error {
+func addPolicyRules(veth *net.Interface, ipc *current.IPConfig, routes []*types.Route, tableStart int, priority int, byIp bool) error {
 	table := -1
 
 	// depend on netlink atomicity to win races for table slots on initial route add
@@ -211,8 +213,12 @@ func addPolicyRules(veth *net.Interface, ipc *current.IPConfig, routes []*types.
 
 	// add policy route for traffic originating from a Pod
 	rule := netlink.NewRule()
-	rule.Priority = 100
-	rule.Src = &net.IPNet{IP: ipc.Address.IP, Mask: net.CIDRMask(32, 32)}
+	rule.Priority = priority
+	if byIp {
+	    rule.Src = &net.IPNet{IP: ipc.Address.IP, Mask: net.CIDRMask(32, 32)}
+    } else {
+        rule.IifName = veth.Name
+    }
 	rule.Table = table
 	err := netlink.RuleAdd(rule)
 	if err != nil {
@@ -306,7 +312,7 @@ func setupContainerVeth(netns ns.NetNS, ifName string, mtu int, hostAddrs []netl
 	return hostInterface, containerInterface, nil
 }
 
-func setupHostVeth(vethName string, hostAddrs []netlink.Addr, masq bool, tableStart int, result *current.Result) error {
+func setupHostVeth(vethName string, hostAddrs []netlink.Addr, masq bool, tableStart int, policyRulePriority int, policyRulesByIp bool, result *current.Result) error {
 	// no IPs to route
 	if len(result.IPs) == 0 {
 		return nil
@@ -340,7 +346,7 @@ func setupHostVeth(vethName string, hostAddrs []netlink.Addr, masq bool, tableSt
 	}
 
 	// add policy rules for traffic coming in from Pods and destined for the VPC
-	err = addPolicyRules(veth, result.IPs[0], result.Routes, tableStart)
+	err = addPolicyRules(veth, result.IPs[0], result.Routes, tableStart, policyRulePriority, policyRulesByIp)
 	if err != nil {
 		return fmt.Errorf("failed to add policy rules: %v", err)
 	}
@@ -425,7 +431,7 @@ func cmdAdd(args *skel.CmdArgs) error {
 		return err
 	}
 
-	if err = setupHostVeth(hostInterface.Name, hostAddrs, conf.IPMasq, conf.TableStart, conf.PrevResult); err != nil {
+	if err = setupHostVeth(hostInterface.Name, hostAddrs, conf.IPMasq, conf.TableStart, conf.HostPolicyRulePriority, conf.HostPolicyRulesByIp, conf.PrevResult); err != nil {
 		return err
 	}
 
