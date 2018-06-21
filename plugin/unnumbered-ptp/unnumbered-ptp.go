@@ -74,6 +74,8 @@ type PluginConf struct {
 	TableStart             int    `json:"routeTableStart"`
 	HostPolicyRulePriority int    `json:"hostPolicyRulePriority"`
 	HostPolicyRulesByIp    bool   `json:"hostPolicyRulesByIp"`
+	HostRouteSrcIpRaw      string `json:"hostRouteSrcIp"`
+	HostRouteSrcIp         net.IP `json:"-"`
 }
 
 // parseConfig parses the supplied configuration (and prevResult) from stdin.
@@ -101,6 +103,13 @@ func parseConfig(stdin []byte) (*PluginConf, error) {
 		}
 	}
 	// End previous result parsing
+
+	if conf.HostRouteSrcIpRaw != "" {
+	    conf.HostRouteSrcIp = net.ParseIP(conf.HostRouteSrcIpRaw)
+	    if conf.HostRouteSrcIp == nil {
+	        return nil, fmt.Errorf("could not parse hostRouteSrcIp: %s", conf.HostRouteSrcIpRaw)
+	    }
+	}
 
 	if conf.HostInterface == "" {
 		return nil, fmt.Errorf("hostInterface must be specified")
@@ -228,7 +237,7 @@ func addPolicyRules(veth *net.Interface, ipc *current.IPConfig, routes []*types.
 	return nil
 }
 
-func setupContainerVeth(netns ns.NetNS, ifName string, mtu int, hostAddrs []netlink.Addr, masq, containerIPV4, containerIPV6 bool, k8sIfName string, pr *current.Result) (*current.Interface, *current.Interface, error) {
+func setupContainerVeth(netns ns.NetNS, ifName string, mtu int, hostAddrs []netlink.Addr, masq, containerIPV4, containerIPV6 bool, k8sIfName string, hostRouteSrcIp net.IP, pr *current.Result) (*current.Interface, *current.Interface, error) {
 	hostInterface := &current.Interface{}
 	containerInterface := &current.Interface{}
 
@@ -275,6 +284,7 @@ func setupContainerVeth(netns ns.NetNS, ifName string, mtu int, hostAddrs []netl
 			err := netlink.RouteAdd(&netlink.Route{
 				LinkIndex: contVeth.Index,
 				Scope:     netlink.SCOPE_LINK,
+				Src:       hostRouteSrcIp,
 				Dst: &net.IPNet{
 					IP:   ipc.IP,
 					Mask: net.CIDRMask(addrBits, addrBits),
@@ -426,7 +436,7 @@ func cmdAdd(args *skel.CmdArgs) error {
 	}
 
 	hostInterface, _, err := setupContainerVeth(netns, conf.ContainerInterface, conf.MTU,
-		hostAddrs, conf.IPMasq, containerIPV4, containerIPV6, args.IfName, conf.PrevResult)
+		hostAddrs, conf.IPMasq, containerIPV4, containerIPV6, args.IfName, conf.HostRouteSrcIp, conf.PrevResult)
 	if err != nil {
 		return err
 	}
