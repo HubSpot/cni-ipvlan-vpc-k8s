@@ -72,6 +72,7 @@ type PluginConf struct {
 	ContainerInterface     string `json:"containerInterface"`
 	MTU                    int    `json:"mtu"`
 	TableStart             int    `json:"routeTableStart"`
+	RouteAllHostInterfaces bool   `json:"routeAllHostInterfaces"`
 	HostPolicyRulePriority int    `json:"hostPolicyRulePriority"`
 	HostPolicyRulesByIp    bool   `json:"hostPolicyRulesByIp"`
 	HostRouteSrcIpRaw      string `json:"hostRouteSrcIp"`
@@ -237,7 +238,7 @@ func addPolicyRules(veth *net.Interface, ipc *current.IPConfig, routes []*types.
 	return nil
 }
 
-func setupContainerVeth(netns ns.NetNS, ifName string, mtu int, hostAddrs []netlink.Addr, masq, containerIPV4, containerIPV6 bool, k8sIfName string, hostRouteSrcIp net.IP, pr *current.Result) (*current.Interface, *current.Interface, error) {
+func setupContainerVeth(netns ns.NetNS, ifName string, mtu int, hostAddrs []netlink.Addr, masq, containerIPV4, containerIPV6 bool, k8sIfName string, pr *current.Result) (*current.Interface, *current.Interface, error) {
 	hostInterface := &current.Interface{}
 	containerInterface := &current.Interface{}
 
@@ -284,7 +285,6 @@ func setupContainerVeth(netns ns.NetNS, ifName string, mtu int, hostAddrs []netl
 			err := netlink.RouteAdd(&netlink.Route{
 				LinkIndex: contVeth.Index,
 				Scope:     netlink.SCOPE_LINK,
-				Src:       hostRouteSrcIp,
 				Dst: &net.IPNet{
 					IP:   ipc.IP,
 					Mask: net.CIDRMask(addrBits, addrBits),
@@ -322,7 +322,7 @@ func setupContainerVeth(netns ns.NetNS, ifName string, mtu int, hostAddrs []netl
 	return hostInterface, containerInterface, nil
 }
 
-func setupHostVeth(vethName string, hostAddrs []netlink.Addr, masq bool, tableStart int, policyRulePriority int, policyRulesByIp bool, result *current.Result) error {
+func setupHostVeth(vethName string, hostAddrs []netlink.Addr, masq bool, tableStart int, policyRulePriority int, policyRulesByIp bool, hostRouteSrcIp net.IP, result *current.Result) error {
 	// no IPs to route
 	if len(result.IPs) == 0 {
 		return nil
@@ -344,6 +344,7 @@ func setupHostVeth(vethName string, hostAddrs []netlink.Addr, masq bool, tableSt
 		err := netlink.RouteAdd(&netlink.Route{
 			LinkIndex: veth.Index,
 			Scope:     netlink.SCOPE_LINK,
+			Src:       hostRouteSrcIp,
 			Dst: &net.IPNet{
 				IP:   ipc.Address.IP,
 				Mask: net.CIDRMask(addrBits, addrBits),
@@ -369,6 +370,15 @@ func setupHostVeth(vethName string, hostAddrs []netlink.Addr, masq bool, tableSt
 	}
 
 	return nil
+}
+
+func appendAddrUnique(addrs []netlink.Addr, newAddr netlink.Addr) ([]netlink.Addr, bool) {
+    for _, addr := range addrs {
+        if addr.Equal(newAddr) {
+            return addrs, false
+        }
+    }
+    return append(addrs, newAddr), true
 }
 
 // cmdAdd is called for ADD requests
@@ -419,6 +429,25 @@ func cmdAdd(args *skel.CmdArgs) error {
 		return fmt.Errorf("failed to get host IP addresses for %q: %v", iface, err)
 	}
 
+    if conf.RouteAllHostInterfaces {
+	    allHostLinks, err := netlink.LinkList()
+	    if err != nil {
+	        return fmt.Errorf("failed to get host links: %v", err)
+	    }
+	    for _, hostLink := range allHostLinks {
+	        if hostLink.Attrs().Name == iface.Attrs().Name {
+	            continue
+	        }
+            hostLinkAddrs, err := netlink.AddrList(hostLink, netlink.FAMILY_ALL)
+            if err != nil {
+                continue
+            }
+            for _, hostLinkAddr := range hostLinkAddrs {
+                hostAddrs, _ = appendAddrUnique(hostAddrs, hostLinkAddr)
+            }
+	    }
+	}
+
 	netns, err := ns.GetNS(args.Netns)
 	if err != nil {
 		return fmt.Errorf("failed to open netns %q: %v", args.Netns, err)
@@ -436,12 +465,12 @@ func cmdAdd(args *skel.CmdArgs) error {
 	}
 
 	hostInterface, _, err := setupContainerVeth(netns, conf.ContainerInterface, conf.MTU,
-		hostAddrs, conf.IPMasq, containerIPV4, containerIPV6, args.IfName, conf.HostRouteSrcIp, conf.PrevResult)
+		hostAddrs, conf.IPMasq, containerIPV4, containerIPV6, args.IfName, conf.PrevResult)
 	if err != nil {
 		return err
 	}
 
-	if err = setupHostVeth(hostInterface.Name, hostAddrs, conf.IPMasq, conf.TableStart, conf.HostPolicyRulePriority, conf.HostPolicyRulesByIp, conf.PrevResult); err != nil {
+	if err = setupHostVeth(hostInterface.Name, hostAddrs, conf.IPMasq, conf.TableStart, conf.HostPolicyRulePriority, conf.HostPolicyRulesByIp, conf.HostRouteSrcIp, conf.PrevResult); err != nil {
 		return err
 	}
 
