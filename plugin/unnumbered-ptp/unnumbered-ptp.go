@@ -229,6 +229,8 @@ func addPolicyRules(veth *net.Interface, ipc *current.IPConfig, routes []*types.
     } else {
         rule.IifName = veth.Name
     }
+    // clear any stale rules for this src:
+    for netlink.RuleDel(rule) == nil {};
 	rule.Table = table
 	err := netlink.RuleAdd(rule)
 	if err != nil {
@@ -237,6 +239,7 @@ func addPolicyRules(veth *net.Interface, ipc *current.IPConfig, routes []*types.
 
 	return nil
 }
+
 
 func setupContainerVeth(netns ns.NetNS, ifName string, mtu int, hostAddrs []netlink.Addr, masq, containerIPV4, containerIPV6 bool, k8sIfName string, pr *current.Result) (*current.Interface, *current.Interface, error) {
 	hostInterface := &current.Interface{}
