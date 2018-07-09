@@ -67,15 +67,17 @@ type PluginConf struct {
 	RawPrevResult *map[string]interface{} `json:"prevResult"`
 	PrevResult    *current.Result         `json:"-"`
 
-	IPMasq                 bool   `json:"ipMasq"`
-	HostInterface          string `json:"hostInterface"`
-	ContainerInterface     string `json:"containerInterface"`
-	MTU                    int    `json:"mtu"`
-	TableStart             int    `json:"routeTableStart"`
-	HostPolicyRulePriority int    `json:"hostPolicyRulePriority"`
-	HostPolicyRulesByIp    bool   `json:"hostPolicyRulesByIp"`
-	HostRouteSrcIpRaw      string `json:"hostRouteSrcIp"`
-	HostRouteSrcIp         net.IP `json:"-"`
+	IPMasq                 bool         `json:"ipMasq"`
+	HostInterface          string       `json:"hostInterface"`
+	ContainerInterface     string       `json:"containerInterface"`
+	MTU                    int          `json:"mtu"`
+	TableStart             int          `json:"routeTableStart"`
+	HostPolicyRulePriority int          `json:"hostPolicyRulePriority"`
+	HostPolicyRulesByIp    bool         `json:"hostPolicyRulesByIp"`
+	HostRouteSrcIpRaw      string       `json:"hostRouteSrcIp"`
+	HostRouteSrcIp         net.IP       `json:"-"`
+	RawRoutes              []string     `json:"routes"`
+	Routes                 []*net.IPNet `json:"-"`
 }
 
 // parseConfig parses the supplied configuration (and prevResult) from stdin.
@@ -109,6 +111,17 @@ func parseConfig(stdin []byte) (*PluginConf, error) {
 	    if conf.HostRouteSrcIp == nil {
 	        return nil, fmt.Errorf("could not parse hostRouteSrcIp: %s", conf.HostRouteSrcIpRaw)
 	    }
+    }
+
+	conf.Routes = make([]*net.IPNet, 0)
+	if conf.RawRoutes != nil {
+		for _, cidrStr := range conf.RawRoutes {
+			_, cidr, err := net.ParseCIDR(cidrStr)
+			if err != nil {
+				return nil, err
+			}
+			conf.Routes = append(conf.Routes, cidr)
+		}
 	}
 
 	if conf.HostInterface == "" {
@@ -239,7 +252,7 @@ func addPolicyRules(veth *net.Interface, ipc *current.IPConfig, routes []*types.
 	return nil
 }
 
-func setupContainerVeth(netns ns.NetNS, ifName string, mtu int, hostAddrs []netlink.Addr, masq, containerIPV4, containerIPV6 bool, k8sIfName string, hostRouteSrcIp net.IP, pr *current.Result) (*current.Interface, *current.Interface, error) {
+func setupContainerVeth(netns ns.NetNS, ifName string, mtu int, hostAddrs []netlink.Addr, masq, containerIPV4, containerIPV6 bool, k8sIfName string, hostRouteSrcIp net.IP, pr *current.Result, hostRoutes []*net.IPNet) (*current.Interface, *current.Interface, error) {
 	hostInterface := &current.Interface{}
 	containerInterface := &current.Interface{}
 
@@ -308,6 +321,19 @@ func setupContainerVeth(netns ns.NetNS, ifName string, mtu int, hostAddrs []netl
 		if err != nil {
 			return fmt.Errorf("failed to add default route %v: %v", hostAddrs[0].IP, err)
 		}
+
+		for _, cidr := range hostRoutes {
+			err = netlink.RouteAdd(&netlink.Route{
+				LinkIndex: contVeth.Index,
+				Scope:     netlink.SCOPE_UNIVERSE,
+				Dst:       cidr,
+				Gw:        hostAddrs[0].IP,
+			})
+			if err != nil {
+				return fmt.Errorf("failed to add %v route %v: %v", cidr, hostAddrs[0].IP, err)
+			}
+		}
+
 
 		// Send a gratuitous arp for all borrowed v4 addresses
 		for _, ipc := range pr.IPs {
@@ -438,7 +464,7 @@ func cmdAdd(args *skel.CmdArgs) error {
 	}
 
 	hostInterface, _, err := setupContainerVeth(netns, conf.ContainerInterface, conf.MTU,
-		hostAddrs, conf.IPMasq, containerIPV4, containerIPV6, args.IfName, conf.HostRouteSrcIp, conf.PrevResult)
+		hostAddrs, conf.IPMasq, containerIPV4, containerIPV6, args.IfName, conf.HostRouteSrcIp, conf.PrevResult, conf.Routes)
 	if err != nil {
 		return err
 	}
