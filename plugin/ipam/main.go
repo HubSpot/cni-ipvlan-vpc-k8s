@@ -47,6 +47,8 @@ type PluginConf struct {
 	RouteToVPCPeers  bool              `json:"routeToVpcPeers"`
 	ReuseIPWait      int               `json:"reuseIPWait"`
 	RouteToSubnetGw  bool              `json:"routeToSubnetGw"`
+	RawRoutes        []string          `json:"routes"`
+	Routes           []*net.IPNet      `json:"-"`
 }
 
 func init() {
@@ -68,6 +70,19 @@ func parseConfig(stdin []byte) (*PluginConf, error) {
 
 	if conf.SecGroupIds == nil {
 		return nil, fmt.Errorf("secGroupIds must be specified")
+	}
+
+	if conf.RawRoutes != nil {
+		conf.Routes = make([]*net.IPNet, 0)
+		for _, cidrStr := range conf.RawRoutes {
+			_, cidr, err := net.ParseCIDR(cidrStr)
+			if err != nil {
+				return nil, err
+			}
+			if cidr != nil {
+				conf.Routes = append(conf.Routes, cidr)
+			}
+		}
 	}
 
 	return &conf, nil
@@ -188,6 +203,10 @@ func cmdAdd(args *skel.CmdArgs) error {
 			return fmt.Errorf("unable to enumerate subnet route table CIDRs %v", err)
 		}
 		cidrs = append(cidrs, subnetCidrs...)
+	}
+
+	if conf.Routes != nil {
+		cidrs = append(cidrs, conf.Routes...)
 	}
 
 	// add routes for all VPC cidrs via the subnet gateway
