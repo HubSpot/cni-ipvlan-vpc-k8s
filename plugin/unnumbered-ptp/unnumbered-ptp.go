@@ -252,7 +252,7 @@ func addPolicyRules(veth *net.Interface, ipc *current.IPConfig, routes []*types.
 	return nil
 }
 
-func setupContainerVeth(netns ns.NetNS, ifName string, mtu int, hostAddrs []netlink.Addr, masq, containerIPV4, containerIPV6 bool, k8sIfName string, hostRouteSrcIp net.IP, pr *current.Result, hostRoutes []*net.IPNet) (*current.Interface, *current.Interface, error) {
+func setupContainerVeth(netns ns.NetNS, ifName string, mtu int, hostAddrs []netlink.Addr, masq, containerIPV4, containerIPV6 bool, k8sIfName string, pr *current.Result, hostRoutes []*net.IPNet) (*current.Interface, *current.Interface, error) {
 	hostInterface := &current.Interface{}
 	containerInterface := &current.Interface{}
 
@@ -299,7 +299,6 @@ func setupContainerVeth(netns ns.NetNS, ifName string, mtu int, hostAddrs []netl
 			err := netlink.RouteAdd(&netlink.Route{
 				LinkIndex: contVeth.Index,
 				Scope:     netlink.SCOPE_LINK,
-				Src:       hostRouteSrcIp,
 				Dst: &net.IPNet{
 					IP:   ipc.IP,
 					Mask: net.CIDRMask(addrBits, addrBits),
@@ -350,7 +349,7 @@ func setupContainerVeth(netns ns.NetNS, ifName string, mtu int, hostAddrs []netl
 	return hostInterface, containerInterface, nil
 }
 
-func setupHostVeth(vethName string, hostAddrs []netlink.Addr, masq bool, tableStart int, policyRulePriority int, policyRulesByIp bool, result *current.Result) error {
+func setupHostVeth(vethName string, hostAddrs []netlink.Addr, masq bool, tableStart int, policyRulePriority int, policyRulesByIp bool, result *current.Result, hostRouteSrcIp net.IP) error {
 	// no IPs to route
 	if len(result.IPs) == 0 {
 		return nil
@@ -372,6 +371,7 @@ func setupHostVeth(vethName string, hostAddrs []netlink.Addr, masq bool, tableSt
 		err := netlink.RouteAdd(&netlink.Route{
 			LinkIndex: veth.Index,
 			Scope:     netlink.SCOPE_LINK,
+			Src:       hostRouteSrcIp,
 			Dst: &net.IPNet{
 				IP:   ipc.Address.IP,
 				Mask: net.CIDRMask(addrBits, addrBits),
@@ -464,12 +464,12 @@ func cmdAdd(args *skel.CmdArgs) error {
 	}
 
 	hostInterface, _, err := setupContainerVeth(netns, conf.ContainerInterface, conf.MTU,
-		hostAddrs, conf.IPMasq, containerIPV4, containerIPV6, args.IfName, conf.HostRouteSrcIp, conf.PrevResult, conf.Routes)
+		hostAddrs, conf.IPMasq, containerIPV4, containerIPV6, args.IfName, conf.PrevResult, conf.Routes)
 	if err != nil {
 		return err
 	}
 
-	if err = setupHostVeth(hostInterface.Name, hostAddrs, conf.IPMasq, conf.TableStart, conf.HostPolicyRulePriority, conf.HostPolicyRulesByIp, conf.PrevResult); err != nil {
+	if err = setupHostVeth(hostInterface.Name, hostAddrs, conf.IPMasq, conf.TableStart, conf.HostPolicyRulePriority, conf.HostPolicyRulesByIp, conf.PrevResult, conf.HostRouteSrcIp); err != nil {
 		return err
 	}
 
