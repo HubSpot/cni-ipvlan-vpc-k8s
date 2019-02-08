@@ -1,5 +1,11 @@
 package aws
 
+import (
+    "os"
+	"encoding/json"
+	"log"
+)
+
 // ENILimit contains limits for adapter count and addresses
 type ENILimit struct {
 	Adapters int
@@ -168,6 +174,36 @@ func init() {
 	}
 }
 
+
+func getOverrides() (bool, ENILimit) {
+
+    file, err := os.Open("/etc/cni-ipvlan-limit-overrides.json")
+    if err != nil {
+        if !os.IsNotExist(err) {
+            log.Fatalf("Error reading ipvlan overrides file: %v ", err)
+        }
+        return false, ENILimit{}
+    }
+    defer file.Close()
+
+	decoder := json.NewDecoder(file)
+	if decoder == nil {
+	    log.Fatalf("invalid decoder")
+		return false, ENILimit{}
+	}
+
+    limit := ENILimit{}
+    err = decoder.Decode(&limit)
+    if err != nil {
+        log.Fatalf("Error parsing yaml of ipvlan overrides file: %v", err)
+        return false, ENILimit{}
+    }
+
+    log.Printf("Read limit overrides from file: %v", limit)
+    return true, limit
+}
+
+
 // ENILimitsForInstanceType returns the limits for ENI for an instance type
 // Returns a zero-limit for unknown instance types
 func ENILimitsForInstanceType(itype string) (limit ENILimit) {
@@ -177,6 +213,11 @@ func ENILimitsForInstanceType(itype string) (limit ENILimit) {
 
 // ENILimits returns the limits based on the system's instance type
 func (c *awsclient) ENILimits() ENILimit {
+    overridesExist, overrides := getOverrides()
+    if overridesExist {
+        return overrides
+    }
+
 	id, err := c.getIDDoc()
 	if err != nil || id == nil {
 		return ENILimit{}
