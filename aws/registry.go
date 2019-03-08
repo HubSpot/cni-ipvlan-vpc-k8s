@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"path"
+	"sort"
 	"sync"
 	"time"
 
@@ -188,6 +189,7 @@ func (r *Registry) HasIP(ip net.IP) (bool, error) {
 	return ok, nil
 }
 
+
 // TrackedBefore returns a list of all IPs last recorded time _before_
 // the time passed to this function. You probably want to call this
 // with time.Now().Add(-duration).
@@ -200,16 +202,31 @@ func (r *Registry) TrackedBefore(t time.Time) ([]net.IP, error) {
 		return nil, err
 	}
 
-	returned := []net.IP{}
+	// get all of the IPs released before t
+    ipStringsBeforeTime := []string{}
 	for ipString, entry := range contents.IPs {
 		if entry.ReleasedOn.Before(t) {
-			ip := net.ParseIP(ipString)
-			if ip == nil {
-				continue
-			}
-			returned = append(returned, ip)
+			ipStringsBeforeTime = append(ipStringsBeforeTime, ipString)
 		}
 	}
+
+    // sort the keys (oldest release time first)
+	sort.Slice(ipStringsBeforeTime, func(i, j int) bool {
+	    entryI := contents.IPs[ipStringsBeforeTime[i]]
+	    entryJ := contents.IPs[ipStringsBeforeTime[j]]
+	    return entryI.ReleasedOn.Before(entryJ.ReleasedOn.Time)
+    })
+
+	// convert to net.IP and return
+	returned := []net.IP{}
+	for _, ipString := range ipStringsBeforeTime {
+		ip := net.ParseIP(ipString)
+		if ip == nil {
+			continue
+		}
+		returned = append(returned, ip)
+	}
+
 	return returned, nil
 }
 
