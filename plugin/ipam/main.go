@@ -49,6 +49,7 @@ type PluginConf struct {
 	RouteToSubnetGw  bool              `json:"routeToSubnetGw"`
 	RawRoutes        []string          `json:"routes"`
 	Routes           []*net.IPNet      `json:"-"`
+
 }
 
 func init() {
@@ -103,16 +104,19 @@ func cmdAdd(args *skel.CmdArgs) error {
 	// conf.ReuseIPWait seconds old in the registry to be
 	// considered for use.
 	free, err := aws.FindFreeIPsAtIndex(conf.IfaceIndex, true)
+
 	if err == nil && len(free) > 0 {
 		registryFreeIPs, err := registry.TrackedBefore(time.Now().Add(time.Duration(-conf.ReuseIPWait) * time.Second))
 		if err == nil && len(registryFreeIPs) > 0 {
 		loop:
-			for _, freeAlloc := range free {
-				for _, freeRegistry := range registryFreeIPs {
+			for _, freeRegistry := range registryFreeIPs {
+				for _, freeAlloc := range free {
 					if freeAlloc.IP.Equal(freeRegistry) {
-						alloc = freeAlloc
-						// update timestamp
+						// Update the IP's release time in the registry to right
+						// now, to prevent other instances of the ipam plugin from
+						// reusing the IP before reuseIpWait is up.
 						registry.TrackIP(freeRegistry)
+						alloc = freeAlloc
 						break loop
 					}
 				}
