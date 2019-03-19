@@ -554,6 +554,7 @@ func cmdDel(args *skel.CmdArgs) error {
 			}
 
 			exact_ipn := net.IPNet{IP: ipn.IP, Mask: net.CIDRMask(addrBits, addrBits)}
+			log.Printf("exact_ipn: %v", exact_ipn)
 			_ = ip.TeardownIPMasq(&exact_ipn, chain, comment)
 			src_rule.Src = &exact_ipn
 			_ = netlink.RuleDel(src_rule)
@@ -564,6 +565,7 @@ func cmdDel(args *skel.CmdArgs) error {
 			if err != nil {
 				return nil
 			}
+			log.Printf("host veth to delete: %v", link)
 
 			rule := netlink.NewRule()
 			rule.IifName = link.Attrs().Name
