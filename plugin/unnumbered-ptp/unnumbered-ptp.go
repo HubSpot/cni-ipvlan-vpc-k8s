@@ -20,6 +20,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"math"
 	"math/rand"
 	"net"
@@ -107,11 +108,11 @@ func parseConfig(stdin []byte) (*PluginConf, error) {
 	// End previous result parsing
 
 	if conf.HostRouteSrcIpRaw != "" {
-	    conf.HostRouteSrcIp = net.ParseIP(conf.HostRouteSrcIpRaw)
-	    if conf.HostRouteSrcIp == nil {
-	        return nil, fmt.Errorf("could not parse hostRouteSrcIp: %s", conf.HostRouteSrcIpRaw)
-	    }
-    }
+		conf.HostRouteSrcIp = net.ParseIP(conf.HostRouteSrcIpRaw)
+		if conf.HostRouteSrcIp == nil {
+			return nil, fmt.Errorf("could not parse hostRouteSrcIp: %s", conf.HostRouteSrcIpRaw)
+		}
+	}
 
 	conf.Routes = make([]*net.IPNet, 0)
 	if conf.RawRoutes != nil {
@@ -237,12 +238,12 @@ func addPolicyRules(veth *net.Interface, ipc *current.IPConfig, routes []*types.
 	rule := netlink.NewRule()
 	rule.Priority = priority
 	if byIp {
-	    rule.Src = &net.IPNet{IP: ipc.Address.IP, Mask: net.CIDRMask(32, 32)}
-    } else {
-        rule.IifName = veth.Name
-    }
-    // clear any stale rules for this src:
-    for netlink.RuleDel(rule) == nil {};
+		rule.Src = &net.IPNet{IP: ipc.Address.IP, Mask: net.CIDRMask(32, 32)}
+	} else {
+		rule.IifName = veth.Name
+	}
+	// clear any stale rules for this src:
+	for netlink.RuleDel(rule) == nil {};
 	rule.Table = table
 	err := netlink.RuleAdd(rule)
 	if err != nil {
@@ -536,7 +537,9 @@ func cmdDel(args *skel.CmdArgs) error {
 		if err != nil && err != ip.ErrLinkNotFound {
 			return err
 		}
+		log.Printf("veth interface inside pod: %v", vethIface)
 		vethPeerIndex, _ = netlink.VethPeerIndex(&netlink.Veth{LinkAttrs: *vethIface.Attrs()})
+		log.Printf("vethPeerIndex: %d", vethPeerIndex)
 		return nil
 	})
 
@@ -550,7 +553,8 @@ func cmdDel(args *skel.CmdArgs) error {
 				addrBits = 32
 			}
 
-      exact_ipn := net.IPNet{IP: ipn.IP, Mask: net.CIDRMask(addrBits, addrBits)}
+			exact_ipn := net.IPNet{IP: ipn.IP, Mask: net.CIDRMask(addrBits, addrBits)}
+			log.Printf("exact_ipn: %v", exact_ipn)
 			_ = ip.TeardownIPMasq(&exact_ipn, chain, comment)
 			src_rule.Src = &exact_ipn
 			_ = netlink.RuleDel(src_rule)
@@ -561,6 +565,7 @@ func cmdDel(args *skel.CmdArgs) error {
 			if err != nil {
 				return nil
 			}
+			log.Printf("host veth to delete: %v", link)
 
 			rule := netlink.NewRule()
 			rule.IifName = link.Attrs().Name
