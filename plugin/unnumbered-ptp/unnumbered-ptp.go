@@ -108,10 +108,10 @@ func parseConfig(stdin []byte) (*PluginConf, error) {
 	// End previous result parsing
 
 	if conf.HostRouteSrcIpRaw != "" {
-	    conf.HostRouteSrcIp = net.ParseIP(conf.HostRouteSrcIpRaw)
-	    if conf.HostRouteSrcIp == nil {
-	        return nil, fmt.Errorf("could not parse hostRouteSrcIp: %s", conf.HostRouteSrcIpRaw)
-	    }
+		conf.HostRouteSrcIp = net.ParseIP(conf.HostRouteSrcIpRaw)
+		if conf.HostRouteSrcIp == nil {
+			return nil, fmt.Errorf("could not parse hostRouteSrcIp: %s", conf.HostRouteSrcIpRaw)
+		}
 	}
 
 	conf.Routes = make([]*net.IPNet, 0)
@@ -238,9 +238,9 @@ func addPolicyRules(veth *net.Interface, ipc *current.IPConfig, routes []*types.
 	rule := netlink.NewRule()
 	rule.Priority = priority
 	if byIp {
-	    rule.Src = &net.IPNet{IP: ipc.Address.IP, Mask: net.CIDRMask(32, 32)}
+		rule.Src = &net.IPNet{IP: ipc.Address.IP, Mask: net.CIDRMask(32, 32)}
 	} else {
-	    rule.IifName = veth.Name
+		rule.IifName = veth.Name
 	}
 	// clear any stale rules for this src:
 	for netlink.RuleDel(rule) == nil {};
