@@ -553,7 +553,7 @@ func cmdDel(args *skel.CmdArgs) error {
 				addrBits = 32
 			}
 
-	  exact_ipn := net.IPNet{IP: ipn.IP, Mask: net.CIDRMask(addrBits, addrBits)}
+			exact_ipn := net.IPNet{IP: ipn.IP, Mask: net.CIDRMask(addrBits, addrBits)}
 			_ = ip.TeardownIPMasq(&exact_ipn, chain, comment)
 			src_rule.Src = &exact_ipn
 			_ = netlink.RuleDel(src_rule)
