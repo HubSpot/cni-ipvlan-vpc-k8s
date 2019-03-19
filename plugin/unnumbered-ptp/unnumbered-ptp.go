@@ -20,6 +20,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"math"
 	"math/rand"
 	"net"
@@ -536,7 +537,9 @@ func cmdDel(args *skel.CmdArgs) error {
 		if err != nil && err != ip.ErrLinkNotFound {
 			return err
 		}
+		log.Printf("veth interface inside pod: %v", vethIface)
 		vethPeerIndex, _ = netlink.VethPeerIndex(&netlink.Veth{LinkAttrs: *vethIface.Attrs()})
+		log.Printf("vethPeerIndex: %d", vethPeerIndex)
 		return nil
 	})
 
