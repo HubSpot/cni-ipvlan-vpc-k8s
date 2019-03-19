@@ -112,7 +112,7 @@ func parseConfig(stdin []byte) (*PluginConf, error) {
 	    if conf.HostRouteSrcIp == nil {
 	        return nil, fmt.Errorf("could not parse hostRouteSrcIp: %s", conf.HostRouteSrcIpRaw)
 	    }
-    }
+	}
 
 	conf.Routes = make([]*net.IPNet, 0)
 	if conf.RawRoutes != nil {
@@ -239,11 +239,11 @@ func addPolicyRules(veth *net.Interface, ipc *current.IPConfig, routes []*types.
 	rule.Priority = priority
 	if byIp {
 	    rule.Src = &net.IPNet{IP: ipc.Address.IP, Mask: net.CIDRMask(32, 32)}
-    } else {
-        rule.IifName = veth.Name
-    }
-    // clear any stale rules for this src:
-    for netlink.RuleDel(rule) == nil {};
+	} else {
+	    rule.IifName = veth.Name
+	}
+	// clear any stale rules for this src:
+	for netlink.RuleDel(rule) == nil {};
 	rule.Table = table
 	err := netlink.RuleAdd(rule)
 	if err != nil {
@@ -553,7 +553,7 @@ func cmdDel(args *skel.CmdArgs) error {
 				addrBits = 32
 			}
 
-      exact_ipn := net.IPNet{IP: ipn.IP, Mask: net.CIDRMask(addrBits, addrBits)}
+	  exact_ipn := net.IPNet{IP: ipn.IP, Mask: net.CIDRMask(addrBits, addrBits)}
 			_ = ip.TeardownIPMasq(&exact_ipn, chain, comment)
 			src_rule.Src = &exact_ipn
 			_ = netlink.RuleDel(src_rule)
